@@ -1,15 +1,16 @@
 package eventhubs
+
 /*
 import (
 	"os"
 	"io"
 	"log"
-	"crypto/tls"	
+	"crypto/tls"
 )
+*/
 
 type AmqpClient interface {
-	New(string url)
-	Send(string message)
-	SendAsync(string message)
+	New(url string)
+	Send(message string)
+	SendAsync(message string)
 }
-*/

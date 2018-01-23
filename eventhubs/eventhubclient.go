@@ -1,45 +1,45 @@
 package eventhubs
 
 import (
-	"os"
-	"io"
-	"fmt"
-	"time"
 	"context"
-	"crypto/tls"	
+	"crypto/tls"
+	"fmt"
+	"io"
+	"os"
 	"pack.ag/amqp"
+	"time"
 )
 
 // EventHub Connection Strings
 const (
-	EventHubHost = "amqps://%s.servicebus.windows.net"
+	EventHubHost         = "amqps://%s.servicebus.windows.net"
 	EventHubReceiverPath = "%s/ConsumerGroups/%s/Partitions/%d"
 )
 
 // EventHub Main Client
 type EventHubClient struct {
-	amqpClient *amqp.Client 
-	context *context.Context
-	session *amqp.Session
-	sender *amqp.Sender
-	receiver *amqp.Receiver
-	Options ConnectionOptions
-	Logger io.Writer
+	amqpClient *amqp.Client
+	context    *context.Context
+	session    *amqp.Session
+	sender     *amqp.Sender
+	receiver   *amqp.Receiver
+	Options    ConnectionOptions
+	Logger     io.Writer
 }
 
 // Options for Connecting to Event Hub
 type ConnectionOptions struct {
-	EventHubNamespace string
-	EventHubName string
+	EventHubNamespace     string
+	EventHubName          string
 	EventHubAccessKeyName string
-	EventHubAccessKey string
+	EventHubAccessKey     string
 }
 
 // Create Event Hub Client with Options
 func New(options *ConnectionOptions) (client *EventHubClient) {
 	client = &EventHubClient{
 		Options: *options,
-		Logger: os.Stdout,
+		Logger:  os.Stdout,
 	}
 	return client
 }
@@ -62,8 +62,8 @@ func (client *EventHubClient) CreateConnection() error {
 	}
 
 	ctx := context.Background()
-	
-	client.amqpClient = amqpClient	
+
+	client.amqpClient = amqpClient
 	client.session = session
 	client.context = &ctx
 
@@ -88,27 +88,27 @@ func (client *EventHubClient) CreateSender() error {
 // Send a message to Event Hub
 func (client *EventHubClient) Send(message string) error {
 
-		ctx, cancel := context.WithTimeout(*client.context, 5*time.Second)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(*client.context, 5*time.Second)
+	defer cancel()
 
-		// Send message
-		err := client.sender.Send(ctx, &amqp.Message{
-			Data: []byte(message),
-		})
-		if err != nil {
-			return err
-		}
+	// Send message
+	err := client.sender.Send(ctx, &amqp.Message{
+		Data: []byte(message),
+	})
+	if err != nil {
+		return err
+	}
 
-		fmt.Println("Successfully sent!")
-	
-		return nil
+	fmt.Println("Successfully sent!")
+
+	return nil
 }
 
 // Create Event Hub Receiver
 func (client *EventHubClient) CreateReceiver(consumerGroup string, partition int) error {
 
 	receiverPath := fmt.Sprintf(
-		EventHubReceiverPath, 
+		EventHubReceiverPath,
 		client.Options.EventHubName,
 		consumerGroup,
 		partition,
@@ -118,6 +118,7 @@ func (client *EventHubClient) CreateReceiver(consumerGroup string, partition int
 	receiver, err := client.session.NewReceiver(
 		amqp.LinkAddress(receiverPath),
 		amqp.LinkCredit(10),
+		amqp.LinkBatching(true),
 	)
 
 	if err != nil {
@@ -172,7 +173,7 @@ func createTlsConnection(addr string) (*tls.Conn, error) {
 	tlsConfig := &tls.Config{}
 	tlsConn, err := tls.Dial("tcp", addr, tlsConfig)
 	if err != nil {
-	  return nil, err
+		return nil, err
 	}
-	return tlsConn, nil;
+	return tlsConn, nil
 }
