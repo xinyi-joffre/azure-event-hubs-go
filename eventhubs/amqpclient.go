@@ -1,16 +1,19 @@
 package eventhubs
 
-/*
 import (
-	"os"
-	"io"
-	"log"
 	"crypto/tls"
+	"pack.ag/amqp"
 )
-*/
 
-type AmqpClient interface {
-	New(url string)
-	Send(message string)
-	SendAsync(message string)
+type AmqpClient struct {
+	*amqp.Client
+}
+
+func createTlsConnection(addr string) (*tls.Conn, error) {
+	tlsConfig := &tls.Config{}
+	tlsConn, err := tls.Dial("tcp", addr, tlsConfig)
+	if err != nil {
+		return nil, err
+	}
+	return tlsConn, nil
 }

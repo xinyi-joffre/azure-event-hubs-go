@@ -2,59 +2,80 @@ package eventhubs
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
+	mgmt "github.com/Azure/azure-sdk-for-go/services/eventhub/mgmt/2017-04-01/eventhub"
+	"github.com/Azure/go-autorest/autorest"
+	"github.com/Azure/go-autorest/autorest/adal"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"io"
+	"math"
 	"os"
 	"pack.ag/amqp"
+	"regexp"
 	"time"
 )
 
-// EventHub Connection Strings
+// EventHub Strings
 const (
-	EventHubHost         = "amqps://%s.servicebus.windows.net"
-	EventHubReceiverPath = "%s/ConsumerGroups/%s/Partitions/%d"
+	EventHubHost          = "amqps://%s.servicebus.windows.net"
+	EventHubPublisherPath = "%s/Publishers/%s" // i.e. eventhubname/Publishers/publishername
+)
+
+const Forever time.Duration = math.MaxInt64
+
+var (
+	connStrRegex = regexp.MustCompile(`Endpoint=sb:\/\/(?P<Host>.+?);SharedAccessKeyName=(?P<KeyName>.+?);SharedAccessKey=(?P<Key>[^;]+?)(?:\z|(?:(?:;EntityPath=)(?P<Entity>.+)))`)
 )
 
 // EventHub Main Client
 type EventHubClient struct {
-	amqpClient *amqp.Client
+	amqpClient *AmqpClient
 	context    *context.Context
 	session    *amqp.Session
-	sender     *amqp.Sender
-	receiver   *amqp.Receiver
-	Options    ConnectionOptions
+	Config     EventHubConfig
 	Logger     io.Writer
+	//receivers      map[int]*Receiver
+	sender *Sender
+	//senders        map[string]*Sender
+	receiver *Receiver
+	//receiverMu     sync.Mutex
+	//senderMu       sync.Mutex
 }
 
-// Options for Connecting to Event Hub
-type ConnectionOptions struct {
+// Config for Connecting to Event Hub
+type EventHubConfig struct {
 	EventHubNamespace     string
 	EventHubName          string
 	EventHubAccessKeyName string
 	EventHubAccessKey     string
 }
 
-// Create Event Hub Client with Options
-func New(options *ConnectionOptions) (client *EventHubClient) {
+type Handler func(context.Context, *EventData) error
+
+// Create Event Hub Client with Config
+func NewClient(config *EventHubConfig) (client *EventHubClient) {
 	client = &EventHubClient{
-		Options: *options,
-		Logger:  os.Stdout,
+		Config: *config,
+		Logger: os.Stdout,
 	}
 	return client
 }
 
 // Create Connection to Event Hub
 func (client *EventHubClient) CreateConnection() error {
-
-	host := fmt.Sprintf(EventHubHost, client.Options.EventHubNamespace)
-	accessKeyName := client.Options.EventHubAccessKeyName
-	accessKey := client.Options.EventHubAccessKey
+	host := fmt.Sprintf(EventHubHost, client.Config.EventHubNamespace)
+	accessKeyName := client.Config.EventHubAccessKeyName
+	accessKey := client.Config.EventHubAccessKey
 
 	amqpClient, err := amqp.Dial(
 		host,
 		amqp.ConnSASLPlain(accessKeyName, accessKey),
+		amqp.ConnIdleTimeout(Forever),
 	)
+
+	if err != nil {
+		return err
+	}
 
 	session, err := amqpClient.NewSession()
 	if err != nil {
@@ -63,91 +84,15 @@ func (client *EventHubClient) CreateConnection() error {
 
 	ctx := context.Background()
 
-	client.amqpClient = amqpClient
+	client.amqpClient = &AmqpClient{amqpClient}
 	client.session = session
 	client.context = &ctx
 
 	return err
 }
 
-// Create Event Hub Sender
-func (client *EventHubClient) CreateSender() error {
-
-	sender, err := client.session.NewSender(
-		amqp.LinkAddress(client.Options.EventHubName),
-	)
-	if err != nil {
-		return err
-	}
-
-	client.sender = sender
-
-	return nil
-}
-
-// Send a message to Event Hub
-func (client *EventHubClient) Send(message string) error {
-
-	ctx, cancel := context.WithTimeout(*client.context, 5*time.Second)
-	defer cancel()
-
-	// Send message
-	err := client.sender.Send(ctx, &amqp.Message{
-		Data: []byte(message),
-	})
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("Successfully sent!")
-
-	return nil
-}
-
-// Create Event Hub Receiver
-func (client *EventHubClient) CreateReceiver(consumerGroup string, partition int) error {
-
-	receiverPath := fmt.Sprintf(
-		EventHubReceiverPath,
-		client.Options.EventHubName,
-		consumerGroup,
-		partition,
-	)
-
-	// Create a receiver
-	receiver, err := client.session.NewReceiver(
-		amqp.LinkAddress(receiverPath),
-		amqp.LinkCredit(10),
-		amqp.LinkBatching(true),
-	)
-
-	if err != nil {
-		return err
-	}
-
-	client.receiver = receiver
-
-	return nil
-
-}
-
-func (client *EventHubClient) Receive() error {
-	ctx, cancel := context.WithCancel(*client.context)
-	defer cancel()
-
-	for {
-		msg, err := client.receiver.Receive(ctx)
-		if err != nil {
-			return err
-		}
-		msg.Accept()
-		fmt.Printf("Message received: %s\n", msg.Data)
-	}
-}
-
 // Close Connection to Event Hub
 func (client *EventHubClient) Close() error {
-
 	if client.sender != nil {
 		err := client.sender.Close()
 		if err != nil {
@@ -162,18 +107,78 @@ func (client *EventHubClient) Close() error {
 		}
 	}
 
-	err := client.Close()
+	err := client.amqpClient.Close()
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
-func createTlsConnection(addr string) (*tls.Conn, error) {
-	tlsConfig := &tls.Config{}
-	tlsConn, err := tls.Dial("tcp", addr, tlsConfig)
+func (client *EventHubClient) Send(ctx context.Context, eventData *EventData, opts ...SendOption) error {
+	sender, err := NewSender(client.amqpClient, client.Config.EventHubName)
+	if err != nil {
+		return err
+	}
+
+	client.sender = sender
+
+	return sender.Send(ctx, eventData, opts...)
+}
+
+func (client *EventHubClient) Receive(ctx context.Context, consumerGroup string, partition int, handler Handler, opts ...ReceiveOption) error {
+	receiver, err := NewReceiver(client.amqpClient, client.Config.EventHubName, consumerGroup, partition, opts...)
+	if err != nil {
+		return err
+	}
+
+	receiver.Listen(handler)
+
+	client.receiver = receiver
+	return nil
+}
+
+// NewWithMSI creates a new connected instance of an Azure Event Hub given a subscription Id, resource group,
+// Event Hub namespace, and Event Hub authorization rule name.
+func NewWithMSI(subscriptionID, resourceGroup, namespace, eventHubName, accessKeyName string, environment azure.Environment) (*EventHubClient, error) {
+	msiEndpoint, err := adal.GetMSIVMEndpoint()
+	spToken, err := adal.NewServicePrincipalTokenFromMSI(msiEndpoint, environment.ResourceManagerEndpoint)
+
 	if err != nil {
 		return nil, err
 	}
-	return tlsConn, nil
+
+	return NewWithSPToken(spToken, subscriptionID, resourceGroup, namespace, eventHubName, accessKeyName, environment)
+}
+
+// NewWithSPToken creates a new connected instance of an Azure Event Hub given a, Azure Active Directory service
+// principal token subscription Id, resource group, Event Hub namespace, and Event Hub Access Key name.
+func NewWithSPToken(spToken *adal.ServicePrincipalToken, subscriptionID, resourceGroup,
+	namespace, eventHubName, accessKeyName string, environment azure.Environment) (*EventHubClient, error) {
+
+	authorizer := autorest.NewBearerAuthorizer(spToken)
+
+	ehClient := mgmt.NewEventHubsClientWithBaseURI(environment.ResourceManagerEndpoint, subscriptionID)
+	ehClient.Authorizer = authorizer
+	ehClient.AddToUserAgent("eventhub")
+
+	result, err := ehClient.ListKeys(context.Background(), resourceGroup, namespace, eventHubName, accessKeyName)
+	if err != nil {
+		return nil, err
+	}
+
+	accessKey := *result.PrimaryKey
+	client := NewClient(
+		&EventHubConfig{
+			EventHubNamespace:     namespace,
+			EventHubName:          eventHubName,
+			EventHubAccessKeyName: accessKeyName,
+			EventHubAccessKey:     accessKey,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return client, err
 }
