@@ -130,18 +130,26 @@ func (receiver *Receiver) Recover() error {
 }
 
 // Receive one message
-func (receiver *Receiver) Receive() error {
+func (receiver *Receiver) Receive() (*EventData, error) {
 	
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 	
 		for {
+
 			msg, err := receiver.receiver.Receive(ctx)
+
 			if err != nil {
-				return err
+				msg.Reject()
+				fmt.Println("Message rejected.")				
+				return nil, err
+			} else {
+				msg.Accept()
+				fmt.Println("Message accepted.")				
 			}
-			msg.Accept()
-			fmt.Printf("Message received: %s\n", msg.Data)
+
+			eventData, err := UnpackAmqpMessage(msg)				
+			return eventData, err
 		}
 	}
 	
@@ -162,9 +170,8 @@ func (receiver *Receiver) handleMessages(messages chan *amqp.Message, handler Ha
 			ctx := context.Background()
 			var err error
 
-			eventData, err := UnpackAmqpMessage(msg)
-
 			if err == nil && msg != nil {
+				eventData, err := UnpackAmqpMessage(msg)				
 				err = handler(ctx, eventData)
 			}
 

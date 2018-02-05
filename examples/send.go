@@ -1,19 +1,20 @@
 package main
 
 import (
+	"bufio"
+	"context"
 	"eventhub/eventhubs"
 	"fmt"
-	"bufio"
 	"os"
 )
 
 func main() {
 
-	client := eventhubs.New(&eventhubs.ConnectionOptions{
-		EventHubNamespace:     "eventhubnamespace",
-		EventHubName:          "eventhubname",
-		EventHubAccessKeyName: "accesskeyname",
-		EventHubAccessKey:     "accesskey",
+	client := eventhubs.NewClient(&eventhubs.EventHubConfig{
+		EventHubNamespace:     "",
+		EventHubName:          "",
+		EventHubAccessKeyName: "",
+		EventHubAccessKey:     "",
 	})
 
 	err := client.CreateConnection()
@@ -21,23 +22,20 @@ func main() {
 		fmt.Printf("Could not create connection: %v", err)
 	}
 
-	err = client.CreateSender()
-	if err != nil {
-		fmt.Printf("Could not create sender: %v", err)
-	}
-
 	fmt.Printf("Type your messages: \n")
 	scanner := bufio.NewScanner(os.Stdin)
 
-	
+	ctx := context.Background()
+
 	for {
 		if scanner.Scan() {
 			line := scanner.Text()
-			err = client.Send(line)
+			err = client.Send(ctx, &eventhubs.EventData{
+				Data: []byte(line),
+			})
 			if err != nil {
 				fmt.Printf("Could not send message: %v", err)
 			}
 		}
-		
 	}
 }

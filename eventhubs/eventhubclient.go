@@ -138,6 +138,22 @@ func (client *EventHubClient) Receive(ctx context.Context, consumerGroup string,
 	return nil
 }
 
+func (client *EventHubClient) ReceiveEvent(ctx context.Context, consumerGroup string, partition int, opts ...ReceiveOption) error {
+	receiver, err := NewReceiver(client.amqpClient, client.Config.EventHubName, consumerGroup, partition, opts...)
+	if err != nil {
+		return err
+	}
+
+	eventdata, err = receiver.Receive()
+	if err != nil {
+		return err
+	}
+
+	client.receiver = receiver	
+	
+	return nil
+}
+
 // NewWithMSI creates a new connected instance of an Azure Event Hub given a subscription Id, resource group,
 // Event Hub namespace, and Event Hub authorization rule name.
 func NewWithMSI(subscriptionID, resourceGroup, namespace, eventHubName, accessKeyName string, environment azure.Environment) (*EventHubClient, error) {
