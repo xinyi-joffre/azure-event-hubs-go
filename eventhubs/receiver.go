@@ -171,7 +171,8 @@ func (receiver *Receiver) handleMessages(messages chan *amqp.Message, handler Ha
 			var err error
 
 			if err == nil && msg != nil {
-				eventData, err := UnpackAmqpMessage(msg)				
+				eventData, _ := UnpackAmqpMessage(msg)	
+
 				err = handler(ctx, eventData)
 			}
 

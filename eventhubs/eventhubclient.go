@@ -144,7 +144,7 @@ func (client *EventHubClient) ReceiveEvent(ctx context.Context, consumerGroup st
 		return err
 	}
 
-	eventdata, err = receiver.Receive()
+	_, err = receiver.Receive()
 	if err != nil {
 		return err
 	}
