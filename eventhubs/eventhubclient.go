@@ -184,6 +184,7 @@ func (client *EventHubClient) fetchReceiver(consumerGroup string, partition int,
 		return receiver, nil
 	}
 	
+	fmt.Println("Inside Mutex 3")
 	receiver, err := NewReceiver(client.amqpClient, client.Config.EventHubName, consumerGroup, partition, opts...)
 	if err != nil {
 		return nil, err
