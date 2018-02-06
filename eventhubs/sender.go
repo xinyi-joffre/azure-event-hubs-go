@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"pack.ag/amqp"
+	"sync"
 )
 
 const (
@@ -15,6 +16,7 @@ type Sender struct {
 	session *Session
 	sender  *amqp.Sender
 	target  string
+	senderMutex sync.Mutex
 }
 
 func NewSender(client *AmqpClient, eventHubName string) (*Sender, error) {
@@ -85,7 +87,10 @@ func (sender *Sender) Send(ctx context.Context, eventData *EventData, opts ...Se
 		msg.Annotations["x-opt-partition-key"] = eventData.PartitionKey
 	}
 
+	sender.senderMutex.Lock()
+	defer sender.senderMutex.Unlock()
 	err := sender.sender.Send(ctx, msg)
+	
 	if err != nil {
 		fmt.Printf("Err: send err: %v", err)
 		return err

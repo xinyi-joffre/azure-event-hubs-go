@@ -36,8 +36,8 @@ type EventHubClient struct {
 	Config     EventHubConfig
 	Logger     io.Writer
 	receivers      map[string]*Receiver
+	receiver	*Receiver
 	sender *Sender
-	receiver *Receiver
 	receiverMu     sync.Mutex
 	senderMu       sync.Mutex
 }

@@ -27,15 +27,31 @@ func main() {
 
 	ctx := context.Background()
 
+	errChan := make(chan error)
+
 	for {
+		/*
 		if scanner.Scan() {
 			line := scanner.Text()
-			err = client.Send(ctx, &eventhubs.EventData{
-				Data: []byte(line),
-			})
-			if err != nil {
-				fmt.Printf("Could not send message: %v", err)
-			}
+			
+			go send(errChan, line)
+		}*/
+
+		for {
+			go send(errChan, "hello")
+			time.Sleep(1 * time.Millisecond)
 		}
 	}
+}
+
+func send (channel chan error, line string) {
+	err := client.Send(ctx, &eventhubs.EventData{
+		Data: []byte(line),
+	})
+
+	if err != nil {
+		fmt.Printf("Could not send message: %v", err)
+	}
+
+	channel <- err
 }
