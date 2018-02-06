@@ -162,7 +162,7 @@ func (client *EventHubClient) fetchSender() (*Sender, error) {
 	if client.sender != nil {
 		return client.sender, nil
 	}
-
+	fmt.Println("Inside Mutex 2")
 	sender, err := NewSender(client.amqpClient, client.Config.EventHubName)
 	if err != nil {
 		return nil, err

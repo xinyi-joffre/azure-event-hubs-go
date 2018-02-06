@@ -90,7 +90,8 @@ func (sender *Sender) Send(ctx context.Context, eventData *EventData, opts ...Se
 	sender.senderMutex.Lock()
 	defer sender.senderMutex.Unlock()
 	err := sender.sender.Send(ctx, msg)
-	
+
+	fmt.Printf("Inside Mutex 1")
 	if err != nil {
 		fmt.Printf("Err: send err: %v", err)
 		return err
