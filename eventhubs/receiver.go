@@ -54,6 +54,7 @@ func NewReceiver(client *AmqpClient, eventHubName string, consumerGroup string, 
 }
 
 func (receiver *Receiver) newSessionAndLink() error {
+
 	amqpSession, err := receiver.client.NewSession()
 	if err != nil {
 		return err
@@ -100,6 +101,7 @@ func WithTimeEnqueuedFilter(timeEnqueued time.Time) ReceiveOption {
 }
 
 func (receiver *Receiver) Close() error {
+	
 	close(receiver.done)
 
 	err := receiver.receiver.Close()

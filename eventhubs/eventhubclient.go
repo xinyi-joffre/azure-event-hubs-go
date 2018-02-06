@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"pack.ag/amqp"
+	"sync"
 	"regexp"
 	"time"
 )
@@ -34,12 +35,11 @@ type EventHubClient struct {
 	session    *amqp.Session
 	Config     EventHubConfig
 	Logger     io.Writer
-	//receivers      map[int]*Receiver
+	receivers      map[string]*Receiver
 	sender *Sender
-	//senders        map[string]*Sender
 	receiver *Receiver
-	//receiverMu     sync.Mutex
-	//senderMu       sync.Mutex
+	receiverMu     sync.Mutex
+	senderMu       sync.Mutex
 }
 
 // Config for Connecting to Event Hub
@@ -57,6 +57,7 @@ func NewClient(config *EventHubConfig) (client *EventHubClient) {
 	client = &EventHubClient{
 		Config: *config,
 		Logger: os.Stdout,
+		receivers: make(map[string]*Receiver),
 	}
 	return client
 }
@@ -117,13 +118,10 @@ func (client *EventHubClient) Close() error {
 
 func (client *EventHubClient) Send(ctx context.Context, eventData *EventData, opts ...SendOption) error {
 
-	if sender = nil {
-		sender, err := NewSender(client.amqpClient, client.Config.EventHubName)
-		if err != nil {
-			return err
-		}
+	sender, err := client.fetchSender()
 
-		client.sender = sender
+	if err != nil {
+		return err
 	}
 
 	return sender.Send(ctx, eventData, opts...)
@@ -155,6 +153,45 @@ func (client *EventHubClient) ReceiveEvent(ctx context.Context, consumerGroup st
 	client.receiver = receiver	
 	
 	return nil
+}
+
+func (client *EventHubClient) fetchSender() (*Sender, error) {
+	client.senderMu.Lock()
+	defer client.senderMu.Unlock()
+
+	if client.sender != nil {
+		return client.sender, nil
+	}
+
+	sender, err := NewSender(client.amqpClient, client.Config.EventHubName)
+	if err != nil {
+		return nil, err
+	}
+
+	client.sender = sender
+
+	return sender, nil
+}
+
+func (client *EventHubClient) fetchReceiver(consumerGroup string, partition int, opts ...ReceiveOption) (*Receiver, error) {
+	client.receiverMu.Lock()
+	defer client.receiverMu.Unlock()
+
+	target := fmt.Sprintf("%s/%d", consumerGroup, partition)
+
+	receiver, ok := client.receivers[target]
+	if ok {
+		return receiver, nil
+	}
+	
+	receiver, err := NewReceiver(client.amqpClient, client.Config.EventHubName, consumerGroup, partition, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	client.receivers[target] = receiver
+
+	return receiver, nil
 }
 
 // NewWithMSI creates a new connected instance of an Azure Event Hub given a subscription Id, resource group,

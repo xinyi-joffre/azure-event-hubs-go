@@ -87,6 +87,7 @@ func (sender *Sender) Send(ctx context.Context, eventData *EventData, opts ...Se
 
 	err := sender.sender.Send(ctx, msg)
 	if err != nil {
+		fmt.Printf("Err: send err: %v", err)
 		return err
 	}
 
