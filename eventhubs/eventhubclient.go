@@ -116,12 +116,15 @@ func (client *EventHubClient) Close() error {
 }
 
 func (client *EventHubClient) Send(ctx context.Context, eventData *EventData, opts ...SendOption) error {
-	sender, err := NewSender(client.amqpClient, client.Config.EventHubName)
-	if err != nil {
-		return err
-	}
 
-	client.sender = sender
+	if sender = nil {
+		sender, err := NewSender(client.amqpClient, client.Config.EventHubName)
+		if err != nil {
+			return err
+		}
+
+		client.sender = sender
+	}
 
 	return sender.Send(ctx, eventData, opts...)
 }
