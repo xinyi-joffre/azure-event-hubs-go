@@ -27,7 +27,7 @@ func UnpackAmqpMessage(message *amqp.Message) (*EventData, error) {
 	}
 
 	return &EventData{
-		SequenceNumber: int64(message.Annotations["x-opt-sequence-number"].(int)),		
+		SequenceNumber: int64(message.Annotations["x-opt-sequence-number"].(int64)),		
 		EnqueuedTime: message.Annotations["x-opt-enqueued-time"].(time.Time),		
 		Offset: message.Annotations["x-opt-offset"].(string),
 		PartitionKey: partitionKey,
