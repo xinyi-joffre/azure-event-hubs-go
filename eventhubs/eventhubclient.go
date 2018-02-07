@@ -10,7 +10,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"pack.ag/amqp"
 	"sync"
 	"regexp"
 	"time"
@@ -18,8 +17,10 @@ import (
 
 // EventHub Strings
 const (
-	EventHubHost          = "amqps://%s.servicebus.windows.net"
+	//EventHubHost          = "amqps://%s.servicebus.windows.net"
+	EventHubHost          = "%s.servicebus.windows.net"
 	EventHubPublisherPath = "%s/Publishers/%s" // i.e. eventhubname/Publishers/publishername
+	
 )
 
 const Forever time.Duration = math.MaxInt64
@@ -30,9 +31,8 @@ var (
 
 // EventHub Main Client
 type EventHubClient struct {
-	amqpClient *AmqpClient
+	amqpClient AmqpClient
 	context    *context.Context
-	session    *amqp.Session
 	Config     EventHubConfig
 	Logger     io.Writer
 	receivers      map[string]*Receiver
@@ -50,7 +50,7 @@ type EventHubConfig struct {
 	EventHubAccessKey     string
 }
 
-type Handler func(context.Context, *EventData) error
+type Handler func(*EventData) error
 
 // Create Event Hub Client with Config
 func NewClient(config *EventHubConfig) (client *EventHubClient) {
@@ -64,59 +64,39 @@ func NewClient(config *EventHubConfig) (client *EventHubClient) {
 
 // Create Connection to Event Hub
 func (client *EventHubClient) CreateConnection() error {
+
 	host := fmt.Sprintf(EventHubHost, client.Config.EventHubNamespace)
 	accessKeyName := client.Config.EventHubAccessKeyName
 	accessKey := client.Config.EventHubAccessKey
 
-	amqpClient, err := amqp.Dial(
-		host,
-		amqp.ConnSASLPlain(accessKeyName, accessKey),
-		amqp.ConnIdleTimeout(Forever),
-	)
+	client.amqpClient = AmqpClient(&ElectronClient{})
+	
+	err := client.amqpClient.CreateConnection(host, accessKeyName, accessKey)
 
 	if err != nil {
 		return err
 	}
-
-	session, err := amqpClient.NewSession()
-	if err != nil {
-		return err
-	}
-
-	ctx := context.Background()
-
-	client.amqpClient = &AmqpClient{amqpClient}
-	client.session = session
-	client.context = &ctx
 
 	return err
 }
 
 // Close Connection to Event Hub
 func (client *EventHubClient) Close() error {
+
 	if client.sender != nil {
-		err := client.sender.Close()
-		if err != nil {
-			return err
-		}
+		client.sender.Close(nil)
 	}
 
 	if client.receiver != nil {
-		err := client.receiver.Close()
-		if err != nil {
-			return err
-		}
+		client.receiver.Close(nil)
 	}
 
-	err := client.amqpClient.Close()
-	if err != nil {
-		return err
-	}
+	client.amqpClient.Close(nil)
 
 	return nil
 }
 
-func (client *EventHubClient) Send(ctx context.Context, eventData *EventData, opts ...SendOption) error {
+func (client *EventHubClient) Send(eventData *EventData, opts ...SendOption) error {
 
 	sender, err := client.fetchSender()
 
@@ -124,10 +104,10 @@ func (client *EventHubClient) Send(ctx context.Context, eventData *EventData, op
 		return err
 	}
 
-	return sender.Send(ctx, eventData, opts...)
+	return sender.Send(eventData, opts...)
 }
 
-func (client *EventHubClient) Receive(ctx context.Context, consumerGroup string, partition int, handler Handler, opts ...ReceiveOption) error {
+func (client *EventHubClient) Receive(consumerGroup string, partition int, handler Handler, opts ...ReceiveOption) error {
 	receiver, err := NewReceiver(client.amqpClient, client.Config.EventHubName, consumerGroup, partition, opts...)
 	if err != nil {
 		return err
@@ -139,7 +119,7 @@ func (client *EventHubClient) Receive(ctx context.Context, consumerGroup string,
 	return nil
 }
 
-func (client *EventHubClient) ReceiveEvent(ctx context.Context, consumerGroup string, partition int, opts ...ReceiveOption) error {
+func (client *EventHubClient) ReceiveEvent(consumerGroup string, partition int, opts ...ReceiveOption) error {
 	receiver, err := NewReceiver(client.amqpClient, client.Config.EventHubName, consumerGroup, partition, opts...)
 	if err != nil {
 		return err
@@ -162,7 +142,7 @@ func (client *EventHubClient) fetchSender() (*Sender, error) {
 	if client.sender != nil {
 		return client.sender, nil
 	}
-	fmt.Println("Inside Mutex 2")
+
 	sender, err := NewSender(client.amqpClient, client.Config.EventHubName)
 	if err != nil {
 		return nil, err
@@ -184,7 +164,6 @@ func (client *EventHubClient) fetchReceiver(consumerGroup string, partition int,
 		return receiver, nil
 	}
 	
-	fmt.Println("Inside Mutex 3")
 	receiver, err := NewReceiver(client.amqpClient, client.Config.EventHubName, consumerGroup, partition, opts...)
 	if err != nil {
 		return nil, err
