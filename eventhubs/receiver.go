@@ -143,6 +143,7 @@ func (receiver *Receiver) handleMessages(messages chan electron.ReceivedMessage,
 			var err error
 
 			if err == nil && msg.Message != nil {
+				fmt.Println("Message is nil")
 				eventData, _ := UnpackAmqpMessage(msg.Message)	
 
 				err = handler(eventData)
