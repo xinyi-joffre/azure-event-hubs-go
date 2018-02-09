@@ -61,7 +61,10 @@ func (sender *Sender) Send(eventData *EventData, opts ...SendOption) error {
 		annotations[amqp.AnnotationKeyString("x-opt-partition-key")] = eventData.PartitionKey
 	}
 
-	m := amqp.NewMessageWith(eventData.Data)
+	m := amqp.NewMessage()
+	m.SetInferred(true)
+	m.Marshal([]byte(eventData.Data))
+
 	m.SetMessageAnnotations(annotations)
 	out := <-sender.sender.SendWaitable(m)
 
